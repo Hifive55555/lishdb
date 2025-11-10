@@ -108,7 +108,7 @@ impl DbHandler {
                         HandleResult::Message(format!("所有表: {}", tables_str))
                     }
                 },
-                ExecutionResult::InsertSuccess(table_name, row_id) => HandleResult::Message(format!("插入表 {table_name} 成功，行ID: {row_id}")),
+                ExecutionResult::InsertSuccess(table_name, rows_inserted) => HandleResult::Message(format!("插入表 {table_name} 成功，插入行数: {rows_inserted}")),
             };
             
             Ok(result)

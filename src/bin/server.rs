@@ -3,15 +3,13 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use env_logger::Env;
 use log::{info, warn};
+use std::sync::Arc;
 
 use lishdb::{DbHandler, HandleResult};
 
-async fn handle_client(stream: TcpStream) -> anyhow::Result<()> {
+async fn handle_client(stream: TcpStream, db_handler: Arc<DbHandler>) -> anyhow::Result<()> {
     let ws_stream = accept_async(stream).await?;
     info!("客户端已连接");
-
-    // 初始化数据库处理程序
-    let db_handler = DbHandler::new(10);
 
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
 
@@ -73,6 +71,10 @@ async fn main() -> anyhow::Result<()> {
     let listener = TcpListener::bind(addr).await?;
     info!("WebSocket 服务端运行在: {}", addr);
 
+    // 初始化共享的数据库处理程序
+    let db_handler = Arc::new(DbHandler::new(10));
+    info!("数据库处理程序已初始化");
+
     tokio::spawn(async {
         tokio::signal::ctrl_c().await.unwrap();
         println!("\n👋 Ctrl-C 收到，立即退出");
@@ -80,7 +82,8 @@ async fn main() -> anyhow::Result<()> {
     });
     
     while let Ok((stream, _)) = listener.accept().await {
-        tokio::spawn(handle_client(stream));
+        let db_handler_clone = db_handler.clone();
+        tokio::spawn(handle_client(stream, db_handler_clone));
     }
 
     Ok(())

@@ -207,11 +207,17 @@ impl CacheManager {
         debug!("尝试获取值: {:?}", handle);
         
         // 尝试获取写锁，因为get操作需要更新缓存项的访问统计
-        if let Ok(mut cache) = self.single_cache.write() {
-            // 先检查缓存中是否存在
-            if let Some(value) = cache.get(handle).cloned() {
-                debug!("缓存命中: {:?}", handle);
-                return Some(value);
+        match self.single_cache.write() {
+            Ok(mut cache) => {
+                // 先检查缓存中是否存在
+                if let Some(value) = cache.get(handle).cloned() {
+                    debug!("缓存命中: {:?}", handle);
+                    return Some(value);
+                }
+            },
+            Err(e) => {
+                error!("获取缓存写锁失败: {:?}", e);
+                // 即使锁获取失败，我们仍然尝试从存储加载数据
             }
         }
         debug!("缓存未命中: {:?}", handle);
@@ -268,10 +274,16 @@ impl CacheManager {
     
     // 插入值到行缓存
     pub fn insert_row(&self, handle: ValueId, value: SingleValue) -> Option<SingleValue> {
-        if let Ok(mut cache) = self.single_cache.write() {
-            cache.insert(handle, value)
-        } else {
-            None
+        match self.single_cache.write() {
+            Ok(mut cache) => {
+                let result = cache.insert(handle, value);
+                debug!("缓存插入成功: {:?}, 替换旧值: {:?}", handle, result.is_some());
+                result
+            },
+            Err(e) => {
+                error!("获取缓存写锁失败，无法插入缓存: {:?}", e);
+                None
+            }
         }
     }
     

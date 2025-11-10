@@ -356,6 +356,8 @@ impl TableAbstract {
     /// 需要从缓存中获取行数据
     pub fn to_actual(self, cache: Arc<CacheManager>) -> Result<TableActual> {
         debug!("开始转换抽象表为实际表，共 {} 行，{} 列", self.rows.len(), self.columns.len());
+        // 记录缓存初始大小
+        debug!("缓存当前大小: {}", cache.cache_size());
         
         let mut values = Vec::with_capacity(self.rows.len());
         for (row_idx, row_handle) in self.rows.iter().enumerate() {
@@ -364,8 +366,8 @@ impl TableAbstract {
             
             for col in &self.columns {
                 let value_id = ValueId::new(row_handle.table_id, row_handle.row_id, col.id);
-                debug!("尝试获取列 '{}' (id: {}) 的值，value_id: {:?}", 
-                       col.name, col.id, value_id);
+                debug!("生成缓存键: table_id={}, row_id={}, column_id={}, 列名='{}'", 
+                       value_id.table_id, value_id.row_id, value_id.column_id, col.name);
                 
                 match cache.get_row(&value_id) {
                     Some(v) => {
