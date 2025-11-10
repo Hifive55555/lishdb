@@ -7,6 +7,7 @@ pub enum Stmt {
     Create(CreateStmt),
     Drop(DropStmt),
     ShowTables(ShowTablesStmt),
+    Insert(InsertStmt),
     // 其他语句类型可以在这里添加
 }
 
@@ -99,4 +100,12 @@ pub(crate) struct DropStmt {
 #[derive(Debug, Clone)]
 pub(crate) struct ShowTablesStmt {
     // 不需要特定字段
+}
+
+/// 插入表语句
+#[derive(Debug, Clone)]
+pub(crate) struct InsertStmt {
+    pub table_name: String,
+    pub columns: Option<Vec<String>>,
+    pub values: Vec<Vec<String>>,
 }

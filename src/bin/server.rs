@@ -11,7 +11,7 @@ async fn handle_client(stream: TcpStream) -> anyhow::Result<()> {
     info!("客户端已连接");
 
     // 初始化数据库处理程序
-    let db_handler = DbHandler::default();
+    let db_handler = DbHandler::new(10);
 
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
 
@@ -25,7 +25,7 @@ async fn handle_client(stream: TcpStream) -> anyhow::Result<()> {
                 Ok(result) => {
                     match result {
                         HandleResult::Table(table) => {
-                            let data = serde_binary::to_vec(&table, serde_binary::binary_stream::Endian::Big)?;
+                            let data = bincode::serialize(&table)?;
 
                             // 回显查询结果给客户端
                             ws_sender.send(Message::Binary(data.into())).await?;

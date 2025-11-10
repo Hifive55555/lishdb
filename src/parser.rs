@@ -2,7 +2,7 @@ use nom::branch::alt;
 use nom::bytes::complete::{tag, tag_no_case, take_till1};
 use nom::character::complete::{alpha1, alphanumeric1, multispace0, multispace1};
 use nom::combinator::{map, opt, recognize, value};
-use nom::multi::{self, many0, separated_list1};
+use nom::multi::{many0, separated_list1};
 use nom::sequence::{delimited, pair, preceded, terminated};
 use nom::{IResult, Parser};
 use log::{debug, error, info, trace, warn};
@@ -395,6 +395,87 @@ mod parse_show {
     }
 }
 
+mod parse_insert {
+    use super::*;
+    use crate::stmt::InsertStmt;
+
+    pub(super) fn parse(input: &str) -> IResult<&str, InsertStmt> {
+        let (input, _) = multispace0(input)?;
+        trace!("开始解析INSERT语句：{:?}", input);
+
+        // 解析表名
+        let (input, table_name) = identifier(input)?;
+        let (input, _) = multispace0(input)?;
+        trace!("解析到表名：{:?}", table_name);
+
+        // 解析可选的列名列表
+        let (input, columns) = opt(parse_column_list).parse(input)?;
+        let (input, _) = multispace0(input)?;
+        trace!("解析到列名列表：{:?}", columns);
+
+        // 解析VALUES关键字
+        let (input, _) = tag_no_case("VALUES")(input)?;
+        let (input, _) = multispace0(input)?;
+
+        // 解析值列表（支持多行插入）
+        let (input, values) = separated_list1(
+            delimited(multispace0, tag(","), multispace0),
+            parse_value_row
+        ).parse(input)?;
+        trace!("解析到值列表：{:?}", values);
+
+        Ok((input, InsertStmt {
+            table_name: table_name.to_string(),
+            columns: columns.map(|cols| cols.iter().map(|c| c.to_string()).collect()),
+            values,
+        }))
+    }
+
+    // 解析列名列表 (column1, column2, ...)
+    fn parse_column_list(input: &str) -> IResult<&str, Vec<&str>> {
+        delimited(
+            tag("("),
+            separated_list1(
+                delimited(multispace0, tag(","), multispace0),
+                preceded(multispace0, identifier)
+            ),
+            preceded(multispace0, tag(")"))
+        ).parse(input)
+    }
+
+    // 解析单行值 ('value1', 'value2', ...)
+    fn parse_value_row(input: &str) -> IResult<&str, Vec<String>> {
+        delimited(
+            tag("("),
+            separated_list1(
+                delimited(multispace0, tag(","), multispace0),
+                parse_value
+            ),
+            preceded(multispace0, tag(")"))
+        ).parse(input)
+    }
+
+    // 解析单个值（支持带引号的字符串、数字等）
+    fn parse_value(input: &str) -> IResult<&str, String> {
+        let (input, _) = multispace0(input)?;
+        
+        // 带引号的字符串
+        let quoted_value = map(
+            delimited(tag("'"), take_till1(|c| c == '\''), tag("'"))
+                .or(delimited(tag("\""), take_till1(|c| c == '"'), tag("\""))),
+            |s: &str| s.to_string()
+        );
+        
+        // 不带引号的值（数字、NULL等）
+        let unquoted_value = map(
+            take_till1::<_, _, nom::error::Error<_>>(|c: char| c == ',' || c == ')' || c.is_whitespace()),
+            |s: &str| s.to_string()
+        );
+        
+        alt((quoted_value, unquoted_value)).parse(input)
+    }
+}
+
 pub(crate) fn parse_sql_stmt(input: &str) -> IResult<&str, Stmt> {
     use StmtType::*;
 
@@ -420,7 +501,7 @@ pub(crate) fn parse_sql_stmt(input: &str) -> IResult<&str, Stmt> {
         Create => map(parse_create::parse, |stmt| Stmt::Create(stmt)).parse(input),
         Drop => map(parse_drop::parse, |stmt| Stmt::Drop(stmt)).parse(input),
         ShowTables => map(parse_show::parse, |stmt| Stmt::ShowTables(stmt)).parse(input),
-        Insert => unimplemented!("INSERT parsing not implemented yet"),
+        Insert => map(parse_insert::parse, |stmt| Stmt::Insert(stmt)).parse(input),
         Update => unimplemented!("UPDATE parsing not implemented yet"),
         Delete => unimplemented!("DELETE parsing not implemented yet"),
     }?;

@@ -10,6 +10,8 @@ pub enum DataType {
     Blob,
     Boolean,
     DateTime,
+    String,
+    Varchar(usize),
 }
 
 /// 表达式（支持表达式嵌套）

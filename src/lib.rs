@@ -44,24 +44,23 @@ pub struct DbHandler {
     cache: Arc<CacheManager>,
 }
 
-impl Default for DbHandler {
-    fn default() -> Self {
-        DbHandler {
-            semaphore: Arc::new(Semaphore::new(1)),
-            storage: Arc::new(StorageManager::default()),
-            catalog: Arc::new(CatalogManager::default()),
-            cache: Arc::new(CacheManager::default()),
-        }
-    }
-}
-
 impl DbHandler {
-    pub fn new(concurrency: usize, storage: Arc<StorageManager>, catalog: Arc<CatalogManager>) -> Self {
+    pub fn new(concurrency: usize) -> Self {
+        let storage = Arc::new(StorageManager::new(StorageConfig::default()).unwrap());
+        let catalog = Arc::new(CatalogManager::default());
+
+        // 初始化缓存管理器
+        let cache = Arc::new(CacheManager::with_ttl(
+            std::time::Duration::from_mins(10),
+            storage.clone(),
+            catalog.clone(),
+        ));
+
         Self {
             semaphore: Arc::new(Semaphore::new(concurrency)),
             storage,
             catalog,
-            cache: Arc::new(CacheManager::default()),
+            cache,
         }
     }
 
@@ -92,7 +91,13 @@ impl DbHandler {
 
             // 读取实际数据
             let result = match result {
-                ExecutionResult::Table(table) => HandleResult::Table(table.to_actual(cache.clone())),
+                ExecutionResult::Table(table) => {
+                    let table = table.to_actual(cache.clone());
+                    match table {
+                        Ok(table) => HandleResult::Table(table),
+                        Err(e) => HandleResult::Message(format!("执行失败: {:?}", e)),
+                    }
+                },
                 ExecutionResult::CreateTableSuccess(table_name) => HandleResult::Message(format!("创建表 {table_name} 成功！")),
                 ExecutionResult::DropTableSuccess(table_name) => HandleResult::Message(format!("删除表 {table_name} 成功！")),
                 ExecutionResult::ShowTablesSuccess(table_names) => {
@@ -103,6 +108,7 @@ impl DbHandler {
                         HandleResult::Message(format!("所有表: {}", tables_str))
                     }
                 },
+                ExecutionResult::InsertSuccess(table_name, row_id) => HandleResult::Message(format!("插入表 {table_name} 成功，行ID: {row_id}")),
             };
             
             Ok(result)

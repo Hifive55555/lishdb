@@ -1,12 +1,12 @@
 use std::sync::{Arc, RwLock};
 use std::io::Write;
 use std::time::Duration;
-use log::trace;
+use log::{trace, debug};
 
 use crate::IndexManager;
 use crate::cache::CacheManager;
 use crate::error::{Error, Result, TableError};
-use crate::storage::{StorageManager, TableMeta};
+use crate::storage::{ColumnMeta, StorageManager, TableMeta};
 
 /// 目录管理器
 pub struct CatalogManager {
@@ -108,11 +108,27 @@ impl CatalogManager {
         // 确保表目录存在
         let table_dir = self.storage.config.data_dir.join(&table_def.name);
         std::fs::create_dir_all(&table_dir)?;
+
+        // 确保表ID基于表名生成
+        let expected_id = TableMeta::generate_id(&table_def.name);
+        let mut table_def_to_save = table_def.clone();
+        
+        // 如果ID不一致，自动更新为正确的ID
+        if table_def_to_save.id != expected_id {
+            debug!("保存时更新表ID: table={}, old_id={}, new_id={}", 
+                  table_def_to_save.name, table_def_to_save.id, expected_id);
+            table_def_to_save.id = expected_id;
+            
+            // 同时更新所有列的ID
+            for column in &mut table_def_to_save.columns {
+                column.id = ColumnMeta::generate_id(expected_id, &column.name);
+            }
+        }
         
         // 表元数据文件存储在表目录下
         let meta_file_path = table_dir.join("table.meta");
         let mut file = std::fs::File::create(meta_file_path)?;
-        let json = serde_json::to_string(table_def)?;
+        let json = serde_json::to_string(&table_def_to_save)?;
         file.write(json.as_bytes())?;
         Ok(())
     }
@@ -145,9 +161,66 @@ impl CatalogManager {
         let meta_file_path = self.storage.config.data_dir.join(table_name).join("table.meta");
         if meta_file_path.exists() {
             let json = std::fs::read_to_string(meta_file_path)?;
-            let table_def: TableMeta = serde_json::from_str(&json)?;
+            let mut table_def: TableMeta = serde_json::from_str(&json)?;
+            
+            // 确保表ID基于表名生成，保持一致性
+            let expected_table_id = TableMeta::generate_id(table_name);
+            if table_def.id != expected_table_id {
+                // 如果ID不一致，更新为基于名称生成的ID
+                debug!("更新表ID以保持一致性: table={}, old_id={}, new_id={}", 
+                      table_name, table_def.id, expected_table_id);
+                table_def.id = expected_table_id;
+                
+                // 同时更新所有列的ID，基于新的表ID和列名
+                for column in &mut table_def.columns {
+                    column.id = ColumnMeta::generate_id(expected_table_id, &column.name);
+                }
+                
+                // 保存更新后的表元数据
+                self.save_table_def(&table_def)?;
+            }
+            
             tables.push(table_def);
         }
         Ok(())
+    }
+    
+    /// 更新表元数据
+    pub async fn update_table_meta(&self, updated_meta: TableMeta) -> Result<()> {
+        // 获取写锁更新内存中的表元数据
+        let mut tables = self.tables.write().unwrap();
+        
+        // 查找并替换现有的表元数据
+        let table_name = &updated_meta.name;
+        if let Some(index) = tables.iter().position(|t| t.name == *table_name) {
+            tables[index] = updated_meta.clone();
+        } else {
+            return Err(TableError::TableNotFound(table_name.clone()).into());
+        }
+        
+        // 保存更新后的元数据到文件
+        self.save_table_def(&updated_meta)?;
+        
+        Ok(())
+    }
+    
+    /// 根据表ID查找表名
+    pub fn get_table_name_by_id(&self, table_id: u64) -> Option<String> {
+        let tables = self.tables.read().unwrap();
+        tables.iter()
+            .find(|t| t.id == table_id)
+            .map(|t| t.name.clone())
+    }
+    
+    /// 根据表ID和列ID查找列名
+    pub fn get_column_name_by_ids(&self, table_id: u64, column_id: u64) -> Option<String> {
+        let tables = self.tables.read().unwrap();
+        tables.iter()
+            .find(|t| t.id == table_id)
+            .and_then(|t| {
+                t.columns.iter()
+                    .find(|c| c.id == column_id)
+                    .map(|c| c.name.clone())
+            })
     }
 }

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::io::Write;
 use serde::{Serialize, Deserialize};
-use crate::error::{ColumnError, Error, IndexError, Result, TableError};
+use crate::error::{IndexError, Result, TableError};
 use crate::storage::{StorageManager, TableFile};
 use crate::catalog::{CatalogManager};
 use crate::expression::DataType;

@@ -52,20 +52,32 @@ async fn main() -> anyhow::Result<()> {
         while !got_reply {
             match read.next().await {
                 Some(Ok(Message::Text(back))) => {
-                    println!("{} {}", "<<<".bright_blue().bold(), back);
+                    println!("{}", back);
                     got_reply = true;
                 }
                 Some(Ok(Message::Binary(data))) => {
-                    let table: TableActual = serde_binary::from_vec(data.to_vec(), serde_binary::binary_stream::Endian::Big)?;
-                    println!("接收到表结果了！{:?}", table);
+                    match bincode::deserialize::<TableActual>(&data) {
+                        Ok(table) => {
+                            println!("{}\n{}", "接收到表结果了！".bright_blue().bold(), table);
+                        },
+                        Err(e) => {
+                            // 如果反序列化失败，尝试以文本形式打印数据
+                            eprintln!("反序列化失败: {}", e);
+                            println!("二进制数据长度: {} 字节", data.len());
+                            // 打印部分数据用于调试
+                            let display_data = &data[0..std::cmp::min(32, data.len())];
+                            println!("数据前32字节: {:?}", display_data);
+                        }
+                    }
+                    got_reply = true; // 设置为true，以便退出内部循环
                 }
                 Some(Ok(_)) => {}
                 Some(Err(e)) => {
-                    eprintln!("❌ 服务端错误: {}", e);
+                    eprintln!("{}\n{}", "❌ 服务端错误:".bright_red().bold(), e);
                     return Ok(());
                 }
                 None => {
-                    println!("🏁 服务端关闭连接");
+                    println!("{}", "🏁 服务端关闭连接".yellow());
                     return Ok(());
                 }
             }

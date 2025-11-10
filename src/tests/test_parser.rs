@@ -151,3 +151,101 @@ fn test_parse_invalid_create_table() {
         },
     }
 }
+
+#[test]
+fn test_parse_insert_with_columns() {
+    let sql = "INSERT INTO users (id, name, age) VALUES ('1', 'Alice', '30');";
+    match parse_sql_stmt(sql) {
+        Ok((remaining, stmt)) => {
+            assert!(remaining.trim().starts_with(';'), "语句应该以分号结束");
+            match stmt {
+                Stmt::Insert(insert_stmt) => {
+                    assert_eq!(insert_stmt.table_name, "users", "表名应该是 users");
+                    assert!(insert_stmt.columns.is_some(), "应该有列名定义");
+                    if let Some(columns) = &insert_stmt.columns {
+                        assert_eq!(columns.len(), 3, "应该有3个列名");
+                        assert_eq!(columns[0], "id", "第一列名应该是 id");
+                        assert_eq!(columns[1], "name", "第二列名应该是 name");
+                        assert_eq!(columns[2], "age", "第三列名应该是 age");
+                    }
+                    assert_eq!(insert_stmt.values.len(), 1, "应该有1行数据");
+                    assert_eq!(insert_stmt.values[0].len(), 3, "每行应该有3个值");
+                    assert_eq!(insert_stmt.values[0][0], "1", "第一个值应该是 1");
+                    assert_eq!(insert_stmt.values[0][1], "Alice", "第二个值应该是 Alice");
+                    assert_eq!(insert_stmt.values[0][2], "30", "第三个值应该是 30");
+                },
+                _ => panic!("应该解析为 INSERT 语句"),
+            }
+        },
+        Err(e) => panic!("解析失败: {:?}", e),
+    }
+}
+
+#[test]
+fn test_parse_insert_without_columns() {
+    let sql = "INSERT INTO products VALUES ('1001', 'Laptop', '999.99');";
+    match parse_sql_stmt(sql) {
+        Ok((remaining, stmt)) => {
+            assert!(remaining.trim().starts_with(';'), "语句应该以分号结束");
+            match stmt {
+                Stmt::Insert(insert_stmt) => {
+                    assert_eq!(insert_stmt.table_name, "products", "表名应该是 products");
+                    assert!(insert_stmt.columns.is_none(), "不应该有列名定义");
+                    assert_eq!(insert_stmt.values.len(), 1, "应该有1行数据");
+                    assert_eq!(insert_stmt.values[0].len(), 3, "每行应该有3个值");
+                    assert_eq!(insert_stmt.values[0][0], "1001", "第一个值应该是 1001");
+                    assert_eq!(insert_stmt.values[0][1], "Laptop", "第二个值应该是 Laptop");
+                    assert_eq!(insert_stmt.values[0][2], "999.99", "第三个值应该是 999.99");
+                },
+                _ => panic!("应该解析为 INSERT 语句"),
+            }
+        },
+        Err(e) => panic!("解析失败: {:?}", e),
+    }
+}
+
+#[test]
+fn test_parse_insert_multiple_rows() {
+    let sql = "INSERT INTO customers (id, name) VALUES ('1', 'Bob'), ('2', 'Charlie');";
+    match parse_sql_stmt(sql) {
+        Ok((remaining, stmt)) => {
+            assert!(remaining.trim().starts_with(';'), "语句应该以分号结束");
+            match stmt {
+                Stmt::Insert(insert_stmt) => {
+                    assert_eq!(insert_stmt.table_name, "customers", "表名应该是 customers");
+                    assert!(insert_stmt.columns.is_some(), "应该有列名定义");
+                    if let Some(columns) = &insert_stmt.columns {
+                        assert_eq!(columns.len(), 2, "应该有2个列名");
+                        assert_eq!(columns[0], "id", "第一列名应该是 id");
+                        assert_eq!(columns[1], "name", "第二列名应该是 name");
+                    }
+                    assert_eq!(insert_stmt.values.len(), 2, "应该有2行数据");
+                    assert_eq!(insert_stmt.values[0][0], "1", "第一行第一个值应该是 1");
+                    assert_eq!(insert_stmt.values[0][1], "Bob", "第一行第二个值应该是 Bob");
+                    assert_eq!(insert_stmt.values[1][0], "2", "第二行第一个值应该是 2");
+                    assert_eq!(insert_stmt.values[1][1], "Charlie", "第二行第二个值应该是 Charlie");
+                },
+                _ => panic!("应该解析为 INSERT 语句"),
+            }
+        },
+        Err(e) => panic!("解析失败: {:?}", e),
+    }
+}
+
+#[test]
+fn test_parse_insert_case_insensitive() {
+    let sql = "insert into users (user_id, email) values ('1', 'user@example.com');";
+    match parse_sql_stmt(sql) {
+        Ok((_remaining, stmt)) => {
+            match stmt {
+                Stmt::Insert(insert_stmt) => {
+                    assert_eq!(insert_stmt.table_name, "users", "表名解析应该忽略大小写");
+                    assert!(insert_stmt.columns.is_some(), "应该正确解析列名");
+                    assert_eq!(insert_stmt.values.len(), 1, "应该解析到一行数据");
+                },
+                _ => panic!("应该解析为 INSERT 语句（忽略大小写）"),
+            }
+        },
+        Err(e) => panic!("解析失败（大小写不敏感测试）: {:?}", e),
+    }
+}
