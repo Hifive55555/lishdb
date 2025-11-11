@@ -1,4 +1,5 @@
-use crate::expression::{DataType, Expr};
+use crate::expression::Expr;
+use crate::value::DataType;
 
 /// SQL语句解析结果枚举
 #[derive(Debug, Clone)]
@@ -54,7 +55,7 @@ impl ColumnStmt {
         ColumnStmt {
             name: name.to_string(),
             alias: None,
-            data_type: DataType::Unknown,
+            data_type: DataType::Null,
             constraints: Vec::new(),
             default_value: None,
         }

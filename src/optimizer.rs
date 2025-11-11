@@ -1,5 +1,6 @@
 use crate::stmt::{Stmt, SelectStmt, ColumnStmt};
-use crate::expression::{Expr, Expression, ConstantExpr, BinaryExpr, BinaryOp, DataType};
+use crate::expression::{Expr, Expression, ConstantExpr, BinaryExpr, BinaryOp};
+use crate::value::DataType;
 
 /// 优化SQL语句
 pub fn optimize_stmt(stmt: Stmt) -> Stmt {

@@ -14,8 +14,8 @@ use linked_hash_map::LinkedHashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 use log::{debug, error, warn};
-use crate::table::{ColumnId, RowId, ValueId};
-use crate::storage::{SingleValue, StorageManager};
+use crate::storage::StorageManager;
+use crate::value::{SingleValue, ValueId};
 use crate::catalog::CatalogManager;
 use crate::Result;
 
@@ -204,14 +204,11 @@ impl CacheManager {
     
     // 获取行缓存中的值，缓存未命中时会从存储中加载
     pub fn get_row(&self, handle: &ValueId) -> Option<SingleValue> {
-        debug!("尝试获取值: {:?}", handle);
-        
         // 尝试获取写锁，因为get操作需要更新缓存项的访问统计
         match self.single_cache.write() {
             Ok(mut cache) => {
                 // 先检查缓存中是否存在
                 if let Some(value) = cache.get(handle).cloned() {
-                    debug!("缓存命中: {:?}", handle);
                     return Some(value);
                 }
             },
@@ -220,15 +217,11 @@ impl CacheManager {
                 // 即使锁获取失败，我们仍然尝试从存储加载数据
             }
         }
-        debug!("缓存未命中: {:?}", handle);
         
         // 缓存未命中，尝试从存储中加载
         // 首先获取表名
         let table_name = match self.catalog.get_table_name_by_id(handle.table_id) {
-            Some(name) => {
-                debug!("找到表名: {} (table_id={})\n", name, handle.table_id);
-                name
-            },
+            Some(name) => name,
             None => {
                 warn!("未找到表: table_id={}", handle.table_id);
                 return None;
@@ -236,11 +229,8 @@ impl CacheManager {
         };
         
         // 然后获取列名
-        let column_name = match self.catalog.get_column_name_by_ids(handle.table_id, handle.column_id) {
-            Some(name) => {
-                debug!("找到列名: {} (column_id={})\n", name, handle.column_id);
-                name
-            },
+        let column = match self.catalog.get_column_by_ids(handle.table_id, handle.column_id) {
+            Some(col) => col,
             None => {
                 warn!("未找到列: table_id={}, column_id={}", handle.table_id, handle.column_id);
                 return None;
@@ -248,21 +238,15 @@ impl CacheManager {
         };
         
         // 从存储中加载数据
-        debug!("从存储中加载: table={}, column={}, row={}", table_name, column_name, handle.row_id);
-        match self.storage.get_column_value(&table_name, &column_name, handle.row_id) {
+        match self.storage.get_column_value(&table_name, &column, handle.row_id) {
             Ok(Some(value)) => {
-                debug!("从存储加载成功");
                 // 将加载的值插入缓存
-                if let Some(old_value) = self.insert_row(*handle, value.clone()) {
-                    debug!("缓存更新，替换旧值");
-                } else {
-                    debug!("成功插入缓存");
-                }
+                self.insert_row(*handle, value.clone());
                 return Some(value);
             },
             Ok(None) => {
                 // 值不存在
-                warn!("存储中未找到值: table={}, column={}, row={}", table_name, column_name, handle.row_id);
+                warn!("存储中未找到值: table={}, column={}, row={}", table_name, column.name, handle.row_id);
             },
             Err(e) => {
                 error!("从存储加载值失败: {:?}", e);
@@ -276,9 +260,7 @@ impl CacheManager {
     pub fn insert_row(&self, handle: ValueId, value: SingleValue) -> Option<SingleValue> {
         match self.single_cache.write() {
             Ok(mut cache) => {
-                let result = cache.insert(handle, value);
-                debug!("缓存插入成功: {:?}, 替换旧值: {:?}", handle, result.is_some());
-                result
+                cache.insert(handle, value)
             },
             Err(e) => {
                 error!("获取缓存写锁失败，无法插入缓存: {:?}", e);

@@ -1,12 +1,12 @@
 use crate::cache::CacheManager;
 use crate::stmt::{ColumnConstraint, ColumnStmt, CreateStmt, DropStmt, InsertStmt, SelectStmt, ShowTablesStmt, Stmt};
-use crate::expression::{Expr, DataType};
+use crate::expression::Expr;
 use crate::storage::{ColumnMeta, StorageManager, TableMeta};
 use crate::catalog::{CatalogManager};
-use crate::table::{ColumnAbstract, RowId, TableAbstract};
+use crate::table::TableAbstract;
+use crate::value::{Column, RowId};
 use crate::error::{ExecutionError, Result, TableError};
 use std::sync::Arc;
-use std::time::Duration;
 use futures_util::future::BoxFuture;
 use chrono::{DateTime, Utc};
 use log::{debug, warn};
@@ -386,7 +386,7 @@ impl Executor {
         // 构建抽象表结构，只包含请求的列
         let columns = table_meta.columns.iter()
             .filter(|col| requested_columns.contains(&col.name))
-            .map(|col| ColumnAbstract {
+            .map(|col| Column {
                 id: col.id,
                 name: col.name.clone(),
                 table_name: scan_node.table_name.clone(),

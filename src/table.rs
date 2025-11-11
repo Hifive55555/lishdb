@@ -8,70 +8,11 @@ use log::{debug, error};
 use crate::Result;
 use crate::error::TableError;
 use crate::cache::CacheManager;
-use crate::expression::DataType;
-use crate::storage::SingleValue;
-
-/// 列抽象
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ColumnAbstract {
-    pub id: u64,
-    pub name: String,
-    pub table_name: String,
-    pub data_type: DataType,
-}
-
-impl ColumnAbstract {
-    pub fn same_with(&self, other: &ColumnAbstract) -> bool {
-        (self.name == other.name) && (self.data_type == other.data_type)
-    }
-}
-
-/// 行句柄
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct RowId {
-    pub table_id: u64,
-    pub row_id: u64,
-}
-
-impl RowId {
-    pub fn new(table_id: u64, row_id: u64) -> Self {
-        Self { table_id, row_id }
-    }
-
-    pub fn get_vec(table_id: u64, row_count: u64) -> Vec<Self> {
-        (0..row_count).map(|i| Self::new(table_id, i)).collect()
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ColumnId {
-    pub table_id: u64,
-    pub column_id: u64,
-}
-
-impl ColumnId {
-    pub fn new(table_id: u64, column_id: u64) -> Self {
-        Self { table_id, column_id }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ValueId {
-    pub table_id: u64,
-    pub row_id: u64,
-    pub column_id: u64,
-}
-
-impl ValueId {
-    pub fn new(table_id: u64, row_id: u64, column_id: u64) -> Self {
-        Self { table_id, row_id, column_id }
-    }
-}
-
+use crate::value::{Column, ColumnId, RowId, SingleValue, ValueId};
 
 /// 表抽象
 pub struct TableAbstract {
-    pub columns: Vec<ColumnAbstract>,
+    pub columns: Vec<Column>,
     pub rows: Vec<RowId>,
 }
 
@@ -166,7 +107,7 @@ impl TableAbstract {
     }
 
     /// 选择操作 - 根据条件筛选行
-    pub fn select(&self, predicate: impl Fn(&RowId, &[ColumnAbstract], &CacheManager) -> bool, cache: Arc<CacheManager>) -> Result<TableAbstract> {
+    pub fn select(&self, predicate: impl Fn(&RowId, &[Column], &CacheManager) -> bool, cache: Arc<CacheManager>) -> Result<TableAbstract> {
         // 应用谓词过滤行
         let filtered_rows: Vec<_> = self.rows.iter()
             .filter(|&row_id| predicate(row_id, &self.columns, &cache))
@@ -211,18 +152,16 @@ impl TableAbstract {
                 let val1 = cache.get_row(&val_id1);
                 let val2 = cache.get_row(&val_id2);
                 
-                // 简单比较：如果任一值不存在，空值排在前面
+                // 比较值
                 match (val1, val2) {
                     (None, None) => continue, // 相等，继续比较下一列
                     (None, Some(_)) => return std::cmp::Ordering::Less,
                     (Some(_), None) => return std::cmp::Ordering::Greater,
                     (Some(v1), Some(v2)) => {
                         // 这里简化处理，实际应该根据数据类型进行适当比较
-                        let v1_str = String::from_utf8_lossy(&v1.0);
-                        let v2_str = String::from_utf8_lossy(&v2.0);
-                        let result = v1_str.cmp(&v2_str);
-                        if result != std::cmp::Ordering::Equal {
-                            return result;
+                        let result = v1.partial_cmp(&v2);
+                        if result != Some(std::cmp::Ordering::Equal) {
+                            return result.unwrap_or(std::cmp::Ordering::Equal);
                         }
                     }
                 }
@@ -248,7 +187,7 @@ impl TableAbstract {
             // 这里实现简单的计数聚合，实际可以根据需要扩展更多聚合函数
             let count = self.rows.len() as u64;
             let count_bytes = count.to_be_bytes().to_vec();
-            Ok(SingleValue(count_bytes))
+            Ok(SingleValue::new(count_bytes, col.data_type))
         } else {
             error!("Aggregate column '{}' not found in the table", aggregate_column);
             return Err(TableError::ColumnNotFound(aggregate_column.to_string()).into());
@@ -307,12 +246,12 @@ impl TableAbstract {
 
     /// 连接操作 - 根据指定条件连接两个表
     pub fn join(&self, other: &TableAbstract, 
-                join_predicate: impl Fn(&RowId, &RowId, &[ColumnAbstract], &[ColumnAbstract], &CacheManager) -> bool, 
+                join_predicate: impl Fn(&RowId, &RowId, &[Column], &[Column], &CacheManager) -> bool, 
                 cache: Arc<CacheManager>) -> Result<TableAbstract> {
         // 创建连接后的列（为避免冲突，在其他表的列名前添加前缀）
         let mut joined_columns = self.columns.clone();
         let other_columns_with_prefix: Vec<_> = other.columns.iter()
-            .map(|col| ColumnAbstract {
+            .map(|col| Column {
                 id: col.id,
                 name: format!("other_{}", col.name), // 简单的前缀避免冲突
                 table_name: format!("other_{}", col.table_name),
@@ -347,7 +286,7 @@ impl TableAbstract {
 /// 表实际
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableActual {
-    pub columns: Vec<ColumnAbstract>,
+    pub columns: Vec<Column>,
     pub values: Vec<Vec<SingleValue>>,
 }
 
@@ -356,29 +295,22 @@ impl TableAbstract {
     /// 需要从缓存中获取行数据
     pub fn to_actual(self, cache: Arc<CacheManager>) -> Result<TableActual> {
         debug!("开始转换抽象表为实际表，共 {} 行，{} 列", self.rows.len(), self.columns.len());
-        // 记录缓存初始大小
-        debug!("缓存当前大小: {}", cache.cache_size());
         
         let mut values = Vec::with_capacity(self.rows.len());
         for (row_idx, row_handle) in self.rows.iter().enumerate() {
-            debug!("处理第 {} 行，row_id: {:?}", row_idx, row_handle);
             let mut row_vals = Vec::with_capacity(self.columns.len());
             
             for col in &self.columns {
                 let value_id = ValueId::new(row_handle.table_id, row_handle.row_id, col.id);
-                debug!("生成缓存键: table_id={}, row_id={}, column_id={}, 列名='{}'", 
-                       value_id.table_id, value_id.row_id, value_id.column_id, col.name);
                 
                 match cache.get_row(&value_id) {
                     Some(v) => {
-                        debug!("成功获取列 '{}' 的值", col.name);
                         row_vals.push(v);
                     },
                     None => {
                         // 缓存未命中且存储中也未找到值，可能是数据未正确写入或已删除
-                        debug!("无法获取列 '{}' 的值，value_id: {:?}", col.name, value_id);
                         // 创建一个空值作为替代，避免整个查询失败
-                        row_vals.push(SingleValue(vec![]));
+                        row_vals.push(SingleValue::NULL);
                     }
                 }
             }
@@ -413,7 +345,7 @@ impl std::fmt::Display for TableActual {
         for row in &self.values {
             for (i, (val, col)) in row.iter().zip(&self.columns).enumerate() {
                 // 转换值为字符串并更新最大宽度
-                let val_str = format_value(val, col.data_type);
+                let val_str = val.to_string();
                 col_widths[i] = col_widths[i].max(val_str.len());
             }
         }
@@ -442,7 +374,7 @@ impl std::fmt::Display for TableActual {
                 if i > 0 {
                     write!(f, " | ")?;
                 }
-                let val_str = format_value(val, col.data_type);
+                let val_str = val.to_string();
                 write!(f, "{:width$}", val_str, width = col_widths[i])?;
             }
             writeln!(f)?;
@@ -451,70 +383,3 @@ impl std::fmt::Display for TableActual {
         Ok(())
     }
 }
-
-/// 根据数据类型格式化SingleValue
-/// 这个应该移动到另一个地方
-fn format_value(value: &SingleValue, data_type: DataType) -> String {
-    // 检查是否为空值
-    if value.0.is_empty() {
-        return "NULL".to_string();
-    }
-    
-    // 根据数据类型进行转换
-    match data_type {
-        DataType::Integer => {
-            if value.0.len() == 4 {
-                let val = i32::from_le_bytes(value.0.clone().try_into().unwrap_or([0; 4]));
-                val.to_string()
-            } else if value.0.len() == 8 {
-                let val = i64::from_le_bytes(value.0.clone().try_into().unwrap_or([0; 8]));
-                val.to_string()
-            } else {
-                format!("{:?}", value.0)
-            }
-        },
-        DataType::Float => {
-            if value.0.len() == 4 {
-                let val = f32::from_le_bytes(value.0.clone().try_into().unwrap_or([0; 4]));
-                val.to_string()
-            } else if value.0.len() == 8 {
-                let val = f64::from_le_bytes(value.0.clone().try_into().unwrap_or([0; 8]));
-                val.to_string()
-            } else {
-                format!("{:?}", value.0)
-            }
-        },
-        DataType::Text | DataType::String | DataType::Varchar(_) => {
-            // 尝试将二进制数据转换为UTF-8字符串
-            match String::from_utf8(value.0.clone()) {
-                Ok(s) => s,
-                Err(_) => format!("{:?}", value.0)
-            }
-        },
-        DataType::Boolean => {
-            if value.0.len() >= 1 {
-                (value.0[0] != 0).to_string()
-            } else {
-                "false".to_string()
-            }
-        },
-        DataType::Blob => {
-            if value.0.len() <= 10 {
-                format!("{:?}", value.0)
-            } else {
-                format!("{:?}...", &value.0[0..10])
-            }
-        },
-        DataType::DateTime => {
-            // 假设存储的是Unix时间戳（秒）
-            if value.0.len() == 8 {
-                let timestamp = i64::from_le_bytes(value.0.clone().try_into().unwrap_or([0; 8]));
-                format!("{}", timestamp)
-            } else {
-                format!("{:?}", value.0)
-            }
-        },
-        DataType::Unknown => format!("{:?}", value.0),
-    }
-}
-

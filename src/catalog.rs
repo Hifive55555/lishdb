@@ -7,6 +7,7 @@ use crate::IndexManager;
 use crate::cache::CacheManager;
 use crate::error::{Error, Result, TableError};
 use crate::storage::{ColumnMeta, StorageManager, TableMeta};
+use crate::value::Column;
 
 /// 目录管理器
 pub struct CatalogManager {
@@ -115,7 +116,7 @@ impl CatalogManager {
         
         // 如果ID不一致，自动更新为正确的ID
         if table_def_to_save.id != expected_id {
-            debug!("保存时更新表ID: table={}, old_id={}, new_id={}", 
+            trace!("保存时更新表ID: table={}, old_id={}, new_id={}", 
                   table_def_to_save.name, table_def_to_save.id, expected_id);
             table_def_to_save.id = expected_id;
             
@@ -167,9 +168,9 @@ impl CatalogManager {
             let expected_table_id = TableMeta::generate_id(table_name);
             if table_def.id != expected_table_id {
                 // 如果ID不一致，更新为基于名称生成的ID
-                debug!("更新表ID以保持一致性: table={}, old_id={}, new_id={}", 
-                      table_name, table_def.id, expected_table_id);
-                table_def.id = expected_table_id;
+            trace!("更新表ID以保持一致性: table={}, old_id={}, new_id={}", 
+                  table_name, table_def.id, expected_table_id);
+            table_def.id = expected_table_id;
                 
                 // 同时更新所有列的ID，基于新的表ID和列名
                 for column in &mut table_def.columns {
@@ -213,14 +214,19 @@ impl CatalogManager {
     }
     
     /// 根据表ID和列ID查找列名
-    pub fn get_column_name_by_ids(&self, table_id: u64, column_id: u64) -> Option<String> {
+    pub fn get_column_by_ids(&self, table_id: u64, column_id: u64) -> Option<Column> {
         let tables = self.tables.read().unwrap();
         tables.iter()
             .find(|t| t.id == table_id)
             .and_then(|t| {
                 t.columns.iter()
                     .find(|c| c.id == column_id)
-                    .map(|c| c.name.clone())
+                    .map(|c| Column {
+                        id: c.id,
+                        name: c.name.clone(),
+                        table_name: t.name.clone(),
+                        data_type: c.data_type,
+                    })
             })
     }
 }

@@ -8,6 +8,7 @@ mod catalog;
 mod index;
 mod stmt;
 mod table;
+pub mod value;
 pub mod error;
 #[cfg(test)]
 mod tests {
@@ -26,7 +27,6 @@ pub use storage::{StorageManager, StorageConfig};
 pub use catalog::CatalogManager;
 pub use index::{IndexManager, IndexDef, IndexType};
 pub use stmt::Stmt;
-pub use expression::DataType;
 pub use table::TableActual;
 
 use executor::ExecutionResult;

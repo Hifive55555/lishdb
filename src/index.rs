@@ -11,7 +11,6 @@ use serde::{Serialize, Deserialize};
 use crate::error::{IndexError, Result, TableError};
 use crate::storage::{StorageManager, TableFile};
 use crate::catalog::{CatalogManager};
-use crate::expression::DataType;
 
 /// 索引类型
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]

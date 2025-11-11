@@ -12,6 +12,7 @@ pub enum Error {
     Index(IndexError),
     Execution(ExecutionError),
     Storage(StorageError),
+    Value(ValueError),
     Internal(String),
 }
 
@@ -26,6 +27,7 @@ impl std::fmt::Display for Error {
             Error::Index(e) => write!(f, "Index Error: {}", e),
             Error::Execution(e) => write!(f, "Execution Error: {}", e),
             Error::Storage(e) => write!(f, "Storage Error: {}", e),
+            Error::Value(e) => write!(f, "Value Error: {}", e),
             Error::Internal(e) => write!(f, "Internal Error: {}", e),
         }
     }
@@ -64,6 +66,16 @@ impl From<IndexError> for Error {
 impl From<ExecutionError> for Error {
     fn from(e: ExecutionError) -> Self {
         Error::Execution(e)
+    }
+}
+impl From<StorageError> for Error {
+    fn from(e: StorageError) -> Self {
+        Error::Storage(e)
+    }
+}
+impl From<ValueError> for Error {
+    fn from(e: ValueError) -> Self {
+        Error::Value(e)
     }
 }
 
@@ -179,6 +191,27 @@ impl std::fmt::Display for StorageError {
             StorageError::ReadError(path) => write!(f, "Failed to read storage file: {}", path),
             StorageError::WriteError(path) => write!(f, "Failed to write storage file: {}", path),
             StorageError::CloseError(path) => write!(f, "Failed to close storage file: {}", path),
+        }
+    }
+}
+
+/// 值错误类型
+#[derive(Debug)]
+pub enum ValueError {
+    /// 值类型不匹配
+    TypeMismatch,
+    /// 值格式无效
+    InvalidFormat,
+    /// 解析失败
+    ParseError(String),
+}
+impl std::error::Error for ValueError {}
+impl std::fmt::Display for ValueError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValueError::TypeMismatch => write!(f, "Value type mismatch"),
+            ValueError::InvalidFormat => write!(f, "Value format is invalid"),
+            ValueError::ParseError(msg) => write!(f, "Failed to parse value: {}", msg),
         }
     }
 }

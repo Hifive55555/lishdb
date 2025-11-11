@@ -1,18 +1,5 @@
+use crate::value::DataType;
 use dyn_clone::DynClone;
-use serde::{Serialize, Deserialize};
-
-#[derive(Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
-pub enum DataType {
-    Unknown,
-    Integer,
-    Float,
-    Text,
-    Blob,
-    Boolean,
-    DateTime,
-    String,
-    Varchar(usize),
-}
 
 /// 表达式（支持表达式嵌套）
 pub(crate) trait Expression : std::fmt::Debug + Send + Sync + DynClone {

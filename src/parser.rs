@@ -10,6 +10,7 @@ use log::{debug, error, info, trace, warn};
 use crate::expression::*;
 use crate::error::Result;
 use crate::stmt::*;
+use crate::value::DataType;
 
 /// 解析标识符（支持字母、数字、下划线，必须以字母或下划线开头）
 fn identifier(input: &str) -> IResult<&str, &str> {
@@ -171,7 +172,6 @@ mod parse_expr {
 
 mod parse_create {
     use super::*;
-    use crate::DataType;
     use crate::stmt::ColumnConstraint;
 
     pub(super) fn parse(input: &str) -> IResult<&str, CreateStmt> {

@@ -1,4 +1,4 @@
-use crate::DataType;
+use crate::value::DataType;
 use crate::parser::parse_sql_stmt;
 use crate::stmt::{ColumnConstraint, Stmt};
 
