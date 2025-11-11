@@ -203,7 +203,7 @@ impl CacheManager {
     }
     
     // 获取行缓存中的值，缓存未命中时会从存储中加载
-    pub fn get_row(&self, handle: &ValueId) -> Option<SingleValue> {
+    pub fn get_value(&self, handle: &ValueId) -> Option<SingleValue> {
         // 尝试获取写锁，因为get操作需要更新缓存项的访问统计
         match self.single_cache.write() {
             Ok(mut cache) => {

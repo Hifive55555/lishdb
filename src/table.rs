@@ -149,8 +149,8 @@ impl TableAbstract {
                 let val_id1 = ValueId::new(row1.table_id, row1.row_id, col.id);
                 let val_id2 = ValueId::new(row2.table_id, row2.row_id, col.id);
                 
-                let val1 = cache.get_row(&val_id1);
-                let val2 = cache.get_row(&val_id2);
+                let val1 = cache.get_value(&val_id1);
+                let val2 = cache.get_value(&val_id2);
                 
                 // 比较值
                 match (val1, val2) {
@@ -219,7 +219,7 @@ impl TableAbstract {
             let mut key = Vec::new();
             for (_, col) in &column_indices {
                 let val_id = ValueId::new(row_id.table_id, row_id.row_id, col.id);
-                if let Some(val) = cache.get_row(&val_id) {
+                if let Some(val) = cache.get_value(&val_id) {
                     key.push(val);
                 } else {
                     // 如果某个分组列的值不存在，跳过此行
@@ -303,7 +303,7 @@ impl TableAbstract {
             for col in &self.columns {
                 let value_id = ValueId::new(row_handle.table_id, row_handle.row_id, col.id);
                 
-                match cache.get_row(&value_id) {
+                match cache.get_value(&value_id) {
                     Some(v) => {
                         row_vals.push(v);
                     },

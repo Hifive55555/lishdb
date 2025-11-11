@@ -111,7 +111,8 @@ fn evaluate_constant_binary_op(
                             return None; // 避免除零错误
                         }
                         left_val / right_val
-                    }
+                    },
+                    _ => return None, // 不支持的操作符
                 };
                 
                 return Some(ConstantExpr {
@@ -135,7 +136,8 @@ fn evaluate_constant_binary_op(
                             return None; // 避免除零错误
                         }
                         left_val / right_val
-                    }
+                    },
+                    _ => return None, // 不支持的操作符
                 };
                 
                 return Some(ConstantExpr {

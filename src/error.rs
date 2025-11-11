@@ -199,19 +199,21 @@ impl std::fmt::Display for StorageError {
 #[derive(Debug)]
 pub enum ValueError {
     /// 值类型不匹配
-    TypeMismatch,
+    TypeMismatch { expected: String, found: String },
     /// 值格式无效
     InvalidFormat,
     /// 解析失败
     ParseError(String),
+    DivisionByZero,
 }
 impl std::error::Error for ValueError {}
 impl std::fmt::Display for ValueError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ValueError::TypeMismatch => write!(f, "Value type mismatch"),
+            ValueError::TypeMismatch { expected, found } => write!(f, "Value type mismatch: expected {}, found {}", expected, found),
             ValueError::InvalidFormat => write!(f, "Value format is invalid"),
             ValueError::ParseError(msg) => write!(f, "Failed to parse value: {}", msg),
+            ValueError::DivisionByZero => write!(f, "Division by zero"),
         }
     }
 }

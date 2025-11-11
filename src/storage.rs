@@ -268,7 +268,7 @@ impl TableFile {
                 
                 // 写入实际值
                 trace!("写入实际值，长度: {}", encoded_value.len());
-                file.write_all(encoded_value.as_ref())?;
+                file.write_all(encoded_value.as_bytes())?;
                 
                 // 刷新缓冲区到磁盘，确保数据持久化
                 file.flush()?;

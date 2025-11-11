@@ -4,7 +4,7 @@ use crate::expression::Expr;
 use crate::storage::{ColumnMeta, StorageManager, TableMeta};
 use crate::catalog::{CatalogManager};
 use crate::table::TableAbstract;
-use crate::value::{Column, RowId};
+use crate::value::{Column, DataType, RowId};
 use crate::error::{ExecutionError, Result, TableError};
 use std::sync::Arc;
 use futures_util::future::BoxFuture;
@@ -238,13 +238,13 @@ pub fn generate_select_plan(stmt: SelectStmt) -> Result<ExecutionPlan> {
         column_names: stmt.columns.iter().map(|col| col.name.clone()).collect(),
     });
     
-    // // 3. 如果有WHERE子句，添加过滤节点
-    // if let Some(condition) = stmt.where_expr {
-    //     plan = PlanNode::Filter(FilterNode {
-    //         child: Box::new(plan),
-    //         condition,
-    //     });
-    // }
+    // 3. 如果有WHERE子句，添加过滤节点
+    if let Some(condition) = stmt.where_expr {
+        plan = PlanNode::Filter(FilterNode {
+            child: Box::new(plan),
+            condition,
+        });
+    }
     
     // 4. 添加投影节点，选择指定的列
     // 处理ColumnWithAlias中的列名和别名
@@ -412,23 +412,30 @@ impl Executor {
         // 2. 对每一行应用表达式
         // 3. 如果表达式为真，保留该行；否则，过滤掉
         
-        // 对于简单实现，我们只支持基本的相等条件过滤
         // 获取表名和列信息，用于值查找
         let table_name = &table.columns[0].table_name; // 假设所有列来自同一表
         
         // 过滤行
         let filtered_rows: Vec<RowId> = table.rows.into_iter()
             .filter(|row_id| {
-                // 对于简单实现，我们假设condition是一个标识符表达式（列名）与常量的比较
-                // 这里简化处理，实际应该实现完整的表达式求值
+                // 计算谓词表达式的值
+                let result_value = condition.evaluate(
+                    &row_id,
+                    &table.columns,
+                    &self.cache_manager
+                );
                 
-                // 检查表达式类型
-                // 在真实场景中，这里应该根据表达式结构进行递归求值
-                // 现在我们只是简单地将所有行都保留，因为完整的表达式求值比较复杂
-                
-                // TODO: 实现完整的表达式求值逻辑
-                // 对于演示，我们目前保留所有行
-                true
+                // 检查结果是否为true
+                match result_value.data_type() {
+                    DataType::Boolean => {
+                        // 比较结果字符串是否为"true"
+                        result_value.as_bytes().to_vec() == vec![1]
+                    },
+                    _ => {
+                        // 非布尔类型，返回false
+                        false
+                    }
+                }
             })
             .collect();
         

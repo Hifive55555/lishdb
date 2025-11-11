@@ -132,8 +132,8 @@ mod parse_expr {
         Ok((input, acc))
     }
 
-    fn parse_binary_expr(input: &str) -> IResult<&str, Expr> {
-        // 解析加减运算（优先级最低，顶层解析器）
+    // 解析加减运算（优先级低于乘除）
+    fn parse_add_subtract(input: &str) -> IResult<&str, Expr> {
         // 用fold_many0处理连续的加减运算（如 1+2-3）
         let (mut input, mut acc) = parse_term(input)?;
 
@@ -158,15 +158,76 @@ mod parse_expr {
         Ok((input, acc))
     }
 
+    fn parse_comparison(input: &str) -> IResult<&str, Expr> {
+        // 先解析加减表达式（优先级高于比较运算）
+        let (mut input, mut acc) = parse_add_subtract(input)?;
+        
+        // 处理连续的比较运算
+        while let Ok((remaining_input, (op, expr))) = pair(
+            preceded(multispace0, alt((
+                tag("="),             // Equal
+                tag("!="),            // NotEqual
+                tag(">"),             // GreaterThan
+                tag(">="),            // GreaterThanOrEqual
+                tag("<"),             // LessThan
+                tag("<="),            // LessThanOrEqual
+            ))),
+            preceded(multispace0, parse_add_subtract),
+        ).parse(input) {
+            let op = match op {
+                "=" => BinaryOp::Equal,
+                "!=" => BinaryOp::NotEqual,
+                ">" => BinaryOp::GreaterThan,
+                ">=" => BinaryOp::GreaterThanOrEqual,
+                "<" => BinaryOp::LessThan,
+                "<=" => BinaryOp::LessThanOrEqual,
+                _ => unreachable!(),
+            };
+            acc = Expr::new(Box::new(BinaryExpr {
+                left: acc,
+                op,
+                right: expr,
+            }));
+            input = remaining_input;
+        }
+        
+        Ok((input, acc))
+    }
+
+    // 解析逻辑运算（AND/OR），优先级低于比较运算
+    fn parse_logical(input: &str) -> IResult<&str, Expr> {
+        // 先解析比较表达式（优先级高于逻辑运算）
+        let (mut input, mut acc) = parse_comparison(input)?;
+        
+        // 处理连续的逻辑运算
+        while let Ok((remaining_input, (op, expr))) = pair(
+            preceded(multispace0, alt((
+                tag_no_case("AND"),    // AND
+                tag_no_case("OR"),     // OR
+            ))),
+            preceded(multispace0, parse_comparison),
+        ).parse(input) {
+            let op = match op.to_uppercase().as_str() {
+                "AND" => BinaryOp::And,
+                "OR" => BinaryOp::Or,
+                _ => unreachable!(),
+            };
+            acc = Expr::new(Box::new(BinaryExpr {
+                left: acc,
+                op,
+                right: expr,
+            }));
+            input = remaining_input;
+        }
+        
+        Ok((input, acc))
+    }
+
     pub(super) fn parse(input: &str) -> IResult<&str, Expr> {
         trace!("解析表达式：{:?}", input);
         
-        alt((
-            parse_function_expr.map(|expr| Expr::new(Box::new(expr))),
-            parse_binary_expr,
-            parse_constant_expr.map(|expr| Expr::new(Box::new(expr))),
-            parse_identifier_expr.map(|expr| Expr::new(Box::new(expr)))
-        )).parse(input)
+        // 确保能正确解析逻辑表达式（现在逻辑运算优先级最低）
+        parse_logical.parse(input)
     }
 }
 
