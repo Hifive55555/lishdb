@@ -158,19 +158,50 @@ mod parse_expr {
         Ok((input, acc))
     }
 
+    fn parse_in_expr(input: &str) -> IResult<&str, Expr> {
+        // 先解析值表达式
+        let (input, value_expr) = parse_add_subtract(input)?;
+        
+        // 解析IN关键字
+        let (input, _) = preceded(multispace0, tag_no_case("IN")).parse(input)?;
+        let (input, _) = multispace0(input)?;
+        
+        // 解析括号内的值列表
+        let (input, values) = delimited(
+            tag("("),
+            preceded(multispace0, separated_list1(
+                preceded(multispace0, tag(",")),
+                preceded(multispace0, parse_add_subtract)
+            )),
+            preceded(multispace0, tag(")")),
+        ).parse(input)?;
+        
+        // 创建InExpr表达式
+        Ok((input, Expr::new(Box::new(InExpr {
+            value: value_expr,
+            values,
+        }))))
+    }
+
     fn parse_comparison(input: &str) -> IResult<&str, Expr> {
+        // 先尝试解析IN表达式
+        if let Ok(result) = parse_in_expr(input) {
+            return Ok(result);
+        }
+        
+        // 如果不是IN表达式，则解析普通比较表达式
         // 先解析加减表达式（优先级高于比较运算）
         let (mut input, mut acc) = parse_add_subtract(input)?;
         
         // 处理连续的比较运算
         while let Ok((remaining_input, (op, expr))) = pair(
             preceded(multispace0, alt((
-                tag("="),             // Equal
                 tag("!="),            // NotEqual
-                tag(">"),             // GreaterThan
                 tag(">="),            // GreaterThanOrEqual
-                tag("<"),             // LessThan
                 tag("<="),            // LessThanOrEqual
+                tag("="),             // Equal
+                tag(">"),             // GreaterThan
+                tag("<"),             // LessThan
             ))),
             preceded(multispace0, parse_add_subtract),
         ).parse(input) {
@@ -194,7 +225,7 @@ mod parse_expr {
         Ok((input, acc))
     }
 
-    // 解析逻辑运算（AND/OR），优先级低于比较运算
+    // 解析逻辑运算（AND/OR），优先级最低
     fn parse_logical(input: &str) -> IResult<&str, Expr> {
         // 先解析比较表达式（优先级高于逻辑运算）
         let (mut input, mut acc) = parse_comparison(input)?;

@@ -228,6 +228,41 @@ impl Expression for BinaryExpr {
     }
 }
 
+/// IN表达式（值在集合中）
+#[derive(Debug, Clone)]
+pub(crate) struct InExpr {
+    pub value: Expr,
+    pub values: Vec<Expr>,
+}
+
+impl Expression for InExpr {
+    fn data_type(&self) -> Option<DataType> {
+        Some(DataType::Boolean)
+    }
+    fn is_nullable(&self) -> bool {
+        false
+    }
+    fn children(&self) -> Vec<&Expr> {
+        let mut children = vec![&self.value];
+        children.extend(self.values.iter());
+        children
+    }
+    fn evaluate(&self, row_id: &RowId, columns: &[Column], cache_manager: &CacheManager) -> SingleValue {
+        // 计算目标值
+        let target_value = self.value.evaluate(row_id, columns, cache_manager);
+        
+        // 检查目标值是否在集合中
+        for item in &self.values {
+            let item_value = item.evaluate(row_id, columns, cache_manager);
+            if target_value.equal(&item_value).unwrap_or(false) {
+                return true.into();
+            }
+        }
+        
+        false.into()
+    }
+}
+
 /// 函数类型（函数名）
 #[derive(Debug, Clone)]
 pub(crate) enum FunctionType {

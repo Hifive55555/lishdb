@@ -428,8 +428,8 @@ impl Executor {
                 // 检查结果是否为true
                 match result_value.data_type() {
                     DataType::Boolean => {
-                        // 比较结果字符串是否为"true"
-                        result_value.as_bytes().to_vec() == vec![1]
+                        // 使用as_bool()方法正确判断布尔值
+                        result_value.as_bool().unwrap_or(false)
                     },
                     _ => {
                         // 非布尔类型，返回false

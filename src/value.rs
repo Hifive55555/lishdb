@@ -532,13 +532,13 @@ impl SingleValue {
             (DataType::Integer, DataType::Float) => {
                 let a = self.as_i32()?;
                 let b = other.as_f64()?;
-                Ok(a as f64 <= b)
+                Ok((a as f64) < b)
             },
             // 浮点数与整数小于
             (DataType::Float, DataType::Integer) => {
                 let a = self.as_f64()?;
                 let b = other.as_i32()?;
-                Ok(a <= b as f64)
+                Ok(a < (b as f64))
             },
             // 其他类型小于
             _ => Err(ValueError::TypeMismatch {
@@ -555,12 +555,12 @@ impl SingleValue {
 
     /// 大于
     pub fn greater_than(&self, other: &Self) -> Result<bool, ValueError> {
-        self.less_than(other).map(|b| !b)
+        self.less_than_or_equal(other).map(|b| !b)
     }
 
     /// 大于等于
     pub fn greater_than_or_equal(&self, other: &Self) -> Result<bool, ValueError> {
-        self.greater_than(other).map(|b| b || self.equal(other).unwrap_or(false))
+        self.less_than(other).map(|b| !b)
     }
 }
 
